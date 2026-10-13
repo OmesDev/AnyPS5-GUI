@@ -1,0 +1,16 @@
+# Adds sceLibcMspaceAlignedAlloc (found missing while porting DOOM + DOOM II): aligned allocation from a libc mspace (reuses sceLibcMspaceMemalign).
+
+diff --git a/core/libs/prx/libc/src/Mspace.cpp b/core/libs/prx/libc/src/Mspace.cpp
+index d64d02d..50bf709 100644
+--- a/core/libs/prx/libc/src/Mspace.cpp
++++ b/core/libs/prx/libc/src/Mspace.cpp
+@@ -314,4 +314,9 @@ std::size_t APS5_VABI sceLibcMspaceMallocUsableSize_nid_postfix(const void* poin
+     Error(22);
+     return 0;
+ }
++// aligned_alloc counterpart of sceLibcMspaceMemalign.
++void* APS5_VABI sceLibcMspaceAlignedAlloc_nid_postfix(void* handle, std::size_t alignment, std::size_t size) {
++    return sceLibcMspaceMemalign_nid_postfix(handle, alignment, size);
++}
++
+ }

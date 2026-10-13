@@ -1,0 +1,25 @@
+# Draws into a multisampled target with MSAA_ENABLE off (seen in Unity titles such as Electronics Puzzle Lab) aborted with
+# "multisampled targets rasterized without MSAA_ENABLE are unsupported". Pin the sample locations to the pixel centre instead,
+# which is what the hardware does with MSAA off. Experimental: depends on VK_EXT_sample_locations support for the sample count.
+
+diff --git a/core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp b/core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp
+index f151a5f..d8be817 100644
+--- a/core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp
++++ b/core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp
+@@ -731,7 +731,15 @@ State DecodeState(const QueueState& queue, bool vertexWorkgroup) {
+     if (!result.alphaToCoverage) zero(cx, 0x2dc, AlphaToCoverageMask, "dithered or rounded alpha-to-coverage");
+     Require(!result.depth || result.depth->samples == result.samples, "the depth target's sample count differs from the rasterizer's");
+     zero(cx, 0x292, ScanModeMask & ~1u, "scan conversion mode");
+-    Require(result.samples == 1 || (read(cx, 0x292) & 1u) != 0, "multisampled targets rasterized without MSAA_ENABLE are unsupported");
++    bool msaaOffOnMultisampled = false;
++    if (result.samples > 1 && (read(cx, 0x292) & 1u) == 0 && !result.alphaToCoverage) {
++        // MSAA_ENABLE is off, so the hardware rasterizes once at the pixel centre and every sample gets that result.
++        // Pinning all sample locations to the centre reproduces that, as for single-sample draws into multisampled targets.
++        result.customSampleLocations = true;
++        result.sampleLocations.fill(0);
++        msaaOffOnMultisampled = true;
++    }
++    Require(result.samples == 1 || (read(cx, 0x292) & 1u) != 0 || msaaOffOnMultisampled, "multisampled targets rasterized without MSAA_ENABLE are unsupported");
+     if (result.samples == 1 && (read(cx, 0x292) & 1u) != 0) {
+         for (std::uint32_t pixel = 0; pixel < 4; ++pixel) static_cast<void>(read(cx, 0x2feu + pixel * 4u));
+         if (auto reason = singleSampleMsaaRejection(queue); !reason.empty()) throw std::runtime_error(reason);

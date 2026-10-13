@@ -1,0 +1,16 @@
+# Adds sceAudioOut2EnableChat (found missing while porting DOOM + DOOM II): voice chat is not routed; returns success.
+
+diff --git a/core/libs/prx/libSceAudioOut/src/AudioOut2System.cpp b/core/libs/prx/libSceAudioOut/src/AudioOut2System.cpp
+index 67d66b4..ced34a2 100644
+--- a/core/libs/prx/libSceAudioOut/src/AudioOut2System.cpp
++++ b/core/libs/prx/libSceAudioOut/src/AudioOut2System.cpp
+@@ -34,4 +34,9 @@ int APS5_VABI sceAudioOut2UserGetSupportedAttributes(void) {
+     return 0;
+ }
+
++// Voice chat is not routed anywhere; report success so titles that enable it at startup continue.
++int APS5_VABI sceAudioOut2EnableChat(void) {
++    return 0;
++}
++
+ }

@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AnyPS5 Relinker</title>
+<style>
+/* ── tokens (shadcn/ui zinc) ─────────────────────────────── */
+:root{
+  --background:0 0% 100%; --foreground:240 10% 3.9%;
+  --card:0 0% 100%; --muted:240 4.8% 95.9%; --muted-foreground:240 3.8% 46.1%;
+  --accent:240 4.8% 95.9%; --border:240 5.9% 90%; --input:240 5.9% 90%;
+  --primary:240 5.9% 10%; --primary-foreground:0 0% 98%;
+  --destructive:0 72% 51%; --success:142 71% 36%; --warning:38 92% 45%;
+  --ring:240 5% 64.9%; --console:240 4.8% 97%;
+  --radius:8px;
+  --font:"Geist","Inter",-apple-system,"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  --mono:"Geist Mono","JetBrains Mono","Cascadia Code",Consolas,"SF Mono",ui-monospace,monospace;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --background:240 10% 3.9%; --foreground:0 0% 98%;
+  --card:240 10% 3.9%; --muted:240 3.7% 15.9%; --muted-foreground:240 5% 64.9%;
+  --accent:240 3.7% 15.9%; --border:240 3.7% 15.9%; --input:240 3.7% 15.9%;
+  --primary:0 0% 98%; --primary-foreground:240 5.9% 10%;
+  --destructive:0 72% 58%; --success:142 64% 46%; --warning:38 92% 55%;
+  --ring:240 4.9% 83.9%; --console:240 6% 6%;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{background:hsl(var(--background));color:hsl(var(--foreground));font:14px/1.5 var(--font);
+  -webkit-font-smoothing:antialiased;overflow:hidden;user-select:none;-webkit-user-select:none}
+input,code,pre,.selectable{user-select:text;-webkit-user-select:text}
+button{font:inherit;color:inherit}
+svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:hsl(var(--border));border-radius:10px;border:3px solid hsl(var(--background))}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ── layout ─────────────────────────────────────────────── */
+.app{display:grid;grid-template-rows:56px 1fr;height:100vh}
+header{display:flex;align-items:center;gap:12px;padding:0 20px;border-bottom:1px solid hsl(var(--border))}
+.logo{width:28px;height:28px;border-radius:6px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));display:grid;place-items:center}
+.logo svg{width:16px;height:16px}
+.title{font-weight:600;font-size:14px;letter-spacing:-.01em}
+.sep{width:1px;height:18px;background:hsl(var(--border))}
+.spacer{flex:1}
+main{display:grid;grid-template-columns:minmax(440px,1fr) minmax(380px,.9fr);min-height:0}
+.left{overflow-y:auto;padding:24px;border-right:1px solid hsl(var(--border))}
+.left-inner{max-width:620px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.right{display:flex;flex-direction:column;min-height:0;padding:24px;gap:16px}
+@media(max-width:1000px){main{grid-template-columns:1fr;overflow-y:auto}.left{overflow:visible;border-right:0;border-bottom:1px solid hsl(var(--border))}.right{min-height:520px}}
+
+/* ── primitives ─────────────────────────────────────────── */
+.card{border:1px solid hsl(var(--border));border-radius:calc(var(--radius) + 4px);background:hsl(var(--card));box-shadow:0 1px 2px 0 rgb(0 0 0/.04)}
+.card-h{padding:18px 20px 0}
+.card-t{font-size:15px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+.card-d{color:hsl(var(--muted-foreground));font-size:13px;margin-top:2px}
+.card-c{padding:16px 20px 20px}
+.label{font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px}
+.hint{font-size:12.5px;color:hsl(var(--muted-foreground))}
+.field{display:flex;flex-direction:column;gap:8px}
+.field+.field{margin-top:18px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 14px;border-radius:var(--radius);
+  font-size:13.5px;font-weight:500;border:1px solid transparent;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s,border-color .15s,opacity .15s}
+.btn:focus-visible,.input:focus-visible,.select:focus-visible,.switch:focus-visible,.tab:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}
+.btn-primary{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}
+.btn-primary:hover{opacity:.9}
+.btn-outline{background:hsl(var(--background));border-color:hsl(var(--input));box-shadow:0 1px 2px 0 rgb(0 0 0/.04)}
+.btn-outline:hover,.btn-ghost:hover{background:hsl(var(--accent))}
+.btn-ghost{background:transparent}
+.btn-destructive{background:hsl(var(--destructive));color:#fff}
+.btn-destructive:hover{opacity:.9}
+.btn-sm{height:32px;padding:0 12px;font-size:13px}
+.btn-icon{width:36px;padding:0}
+.btn-icon.btn-sm{width:32px}
+.btn-lg{height:42px;font-size:14px}
+.btn:disabled{opacity:.5;pointer-events:none}
+
+.input,.select{height:36px;width:100%;border:1px solid hsl(var(--input));border-radius:var(--radius);background:transparent;
+  padding:0 12px;font:13px var(--font);color:hsl(var(--foreground));box-shadow:0 1px 2px 0 rgb(0 0 0/.04)}
+.input.mono{font-family:var(--mono);font-size:12.5px}
+.input::placeholder{color:hsl(var(--muted-foreground))}
+.select{appearance:none;-webkit-appearance:none;padding-right:32px;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center}
+.select option{background:hsl(var(--background));color:hsl(var(--foreground))}
+.input-group{display:flex;gap:8px}
+
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:6px;font-size:12px;font-weight:500;border:1px solid hsl(var(--border));white-space:nowrap}
+.badge .d{width:6px;height:6px;border-radius:50%;background:currentColor}
+.badge-ok{color:hsl(var(--success));border-color:hsl(var(--success)/.3);background:hsl(var(--success)/.08)}
+.badge-bad{color:hsl(var(--destructive));border-color:hsl(var(--destructive)/.3);background:hsl(var(--destructive)/.08)}
+.badge-warn{color:hsl(var(--warning));border-color:hsl(var(--warning)/.3);background:hsl(var(--warning)/.08)}
+.badge-muted{color:hsl(var(--muted-foreground));background:hsl(var(--muted))}
+
+/* switch */
+.switch{position:relative;width:36px;height:20px;border-radius:999px;background:hsl(var(--input));border:0;cursor:pointer;flex:none;transition:background .15s;padding:0}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:hsl(var(--background));box-shadow:0 1px 3px rgb(0 0 0/.2);transition:transform .15s}
+.switch[aria-checked="true"]{background:hsl(var(--primary))}
+.switch[aria-checked="true"]::after{transform:translateX(16px)}
+.switch:disabled{opacity:.45;cursor:not-allowed}
+
+/* tabs */
+.tabs{display:inline-grid;grid-auto-flow:column;grid-auto-columns:1fr;background:hsl(var(--muted));border-radius:var(--radius);padding:4px;height:40px;width:100%}
+.tab{border:0;background:transparent;border-radius:6px;font-size:13.5px;font-weight:500;color:hsl(var(--muted-foreground));cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:.15s}
+.tab[aria-selected="true"]{background:hsl(var(--background));color:hsl(var(--foreground));box-shadow:0 1px 3px rgb(0 0 0/.08)}
+
+/* option rows */
+.opts{margin-top:16px;border:1px solid hsl(var(--border));border-radius:var(--radius)}
+.opt{display:flex;align-items:center;gap:16px;padding:12px 14px}
+.opt+.opt{border-top:1px solid hsl(var(--border))}
+.opt-text{flex:1;min-width:0}
+.opt-text code{font:11.5px var(--mono);color:hsl(var(--muted-foreground));background:hsl(var(--muted));padding:1px 5px;border-radius:4px;margin-left:6px}
+.opt.dis{opacity:.45}
+.opt .select{width:190px;height:32px}
+
+/* dropzone + file rows */
+.dz{border:1px dashed hsl(var(--border));border-radius:var(--radius);padding:22px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;transition:.15s;background:hsl(var(--muted)/.35)}
+.dz.over{border-color:hsl(var(--foreground)/.5);background:hsl(var(--accent))}
+.dz-ic{width:40px;height:40px;border-radius:999px;border:1px solid hsl(var(--border));display:grid;place-items:center;background:hsl(var(--background));color:hsl(var(--muted-foreground))}
+.dz-t{font-size:13.5px;font-weight:500}
+.dz-row{display:flex;gap:8px;margin-top:4px}
+.file{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid hsl(var(--border));border-radius:var(--radius)}
+.file-ic{width:34px;height:34px;border-radius:6px;background:hsl(var(--muted));display:grid;place-items:center;color:hsl(var(--muted-foreground));flex:none}
+.file-main{flex:1;min-width:0}
+.file-name{font-weight:500;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-path{font:11.5px var(--mono);color:hsl(var(--muted-foreground));overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+.list{border:1px solid hsl(var(--border));border-radius:var(--radius);max-height:208px;overflow-y:auto}
+.li{display:flex;align-items:center;gap:10px;padding:7px 8px 7px 12px;font-size:13px}
+.li+.li{border-top:1px solid hsl(var(--border))}
+.li .n{flex:1;min-width:0;font-family:var(--mono);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.li .s{color:hsl(var(--muted-foreground));font-size:12px;font-variant-numeric:tabular-nums}
+.list-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.list-actions{display:flex;gap:6px}
+
+/* collapsible */
+.coll-btn{display:flex;align-items:center;gap:6px;border:0;background:none;cursor:pointer;color:hsl(var(--muted-foreground));font-size:13px;font-weight:500;padding:0;margin-top:18px}
+.coll-btn:hover{color:hsl(var(--foreground))}
+.coll-btn svg{transition:transform .15s}
+.coll-btn[aria-expanded="true"] svg{transform:rotate(90deg)}
+.coll{display:none;margin-top:14px}
+.coll.open{display:block}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+
+/* command + action bar */
+.cmd{position:relative;background:hsl(var(--muted)/.6);border:1px solid hsl(var(--border));border-radius:var(--radius);padding:10px 44px 10px 12px;font:12px/1.6 var(--mono);color:hsl(var(--muted-foreground));word-break:break-all}
+.cmd b{color:hsl(var(--foreground));font-weight:500}
+.cmd .btn{position:absolute;top:6px;right:6px}
+.actions{position:sticky;bottom:-24px;margin:0 -24px -24px;padding:16px 24px 24px;background:hsl(var(--background));border-top:1px solid hsl(var(--border));display:flex;flex-direction:column;gap:12px}
+.actions>*{max-width:620px;width:100%;margin:0 auto}
+
+/* console */
+.console-card{flex:1;display:flex;flex-direction:column;min-height:0}
+.console-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid hsl(var(--border))}
+.console{flex:1;overflow:auto;background:hsl(var(--console));padding:14px 16px;font:12px/1.65 var(--mono);white-space:pre-wrap;word-break:break-word;border-radius:0 0 calc(var(--radius) + 4px) calc(var(--radius) + 4px)}
+.console .c{color:hsl(var(--foreground));font-weight:500}
+.console .m{color:hsl(var(--muted-foreground))}
+.console .e{color:hsl(var(--destructive))}
+.console .o{color:hsl(var(--foreground)/.85)}
+.empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:hsl(var(--muted-foreground));font-family:var(--font);font-size:13px;text-align:center}
+.empty .dz-ic{width:44px;height:44px}
+.progress{height:2px;background:hsl(var(--muted));overflow:hidden;position:relative;display:none}
+.progress.on{display:block}
+.progress::after{content:"";position:absolute;inset:0;width:35%;background:hsl(var(--primary));animation:slide 1.1s ease-in-out infinite}
+@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(300%)}}
+.elapsed{margin-left:auto;font:12px var(--mono);color:hsl(var(--muted-foreground));font-variant-numeric:tabular-nums}
+
+/* alert */
+.alert{border:1px solid hsl(var(--border));border-radius:calc(var(--radius) + 4px);padding:14px 16px;display:grid;grid-template-columns:20px 1fr;gap:4px 12px}
+.alert svg{margin-top:2px}
+.alert-t{font-weight:600;font-size:14px}
+.alert-d{grid-column:2;font-size:13px;color:hsl(var(--muted-foreground))}
+.alert-a{grid-column:2;display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.alert.ok svg{color:hsl(var(--success))}
+.alert.bad{border-color:hsl(var(--destructive)/.4)}
+.alert.bad svg,.alert.bad .alert-t{color:hsl(var(--destructive))}
+.hidden{display:none!important}
+
+/* dialog */
+dialog{border:1px solid hsl(var(--border));border-radius:calc(var(--radius) + 4px);background:hsl(var(--background));color:hsl(var(--foreground));
+  padding:0;margin:auto;width:min(560px,calc(100vw - 32px));box-shadow:0 10px 38px -10px rgb(0 0 0/.35),0 10px 20px -15px rgb(0 0 0/.2)}
+dialog::backdrop{background:rgb(0 0 0/.6)}
+dialog[open]{animation:pop .15s ease-out}
+@keyframes pop{from{opacity:0;transform:scale(.97)}}
+.dlg-h{padding:22px 24px 4px}
+.dlg-t{font-size:17px;font-weight:600;letter-spacing:-.01em}
+.dlg-c{padding:16px 24px}
+.dlg-f{padding:4px 24px 22px;display:flex;justify-content:flex-end;gap:8px}
+.dlg-x{position:absolute;top:14px;right:14px}
+
+/* toast */
+#toasts{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:50}
+.toast{min-width:300px;max-width:400px;border:1px solid hsl(var(--border));background:hsl(var(--background));border-radius:var(--radius);padding:12px 14px;
+  box-shadow:0 8px 24px -8px rgb(0 0 0/.25);display:flex;gap:10px;align-items:flex-start;font-size:13px;animation:tin .2s ease-out}
+.toast b{display:block;font-weight:600}
+.toast span{color:hsl(var(--muted-foreground))}
+.toast.err svg{color:hsl(var(--destructive))}
+@keyframes tin{from{opacity:0;transform:translateY(8px)}}
+.engine{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid hsl(var(--border));border-radius:var(--radius)}
+.eng-actions{display:flex;align-items:center;gap:8px;margin-top:12px}
+.eng-prog{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+.bar{height:6px;border-radius:99px;background:hsl(var(--muted));overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:hsl(var(--primary));border-radius:99px;transition:width .25s}
+.upd{height:24px;padding:0 9px;font-size:12px;border-radius:6px}
+kbd{font:11px var(--mono);border:1px solid hsl(var(--border));border-bottom-width:2px;border-radius:4px;padding:0 5px;color:hsl(var(--muted-foreground))}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m10 13-2 2 2 2M14 17l2-2-2-2"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5M12 3v12"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+  <symbol id="i-folder-open" viewBox="0 0 24 24"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="m6 3 14 9-14 9V3z"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6M12 19h8"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-win" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></symbol>
+  <symbol id="i-linux" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m6 9 3 3-3 3M12 15h6"/></symbol>
+  <symbol id="i-package" viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></symbol>
+  <symbol id="i-hammer" viewBox="0 0 24 24"><path d="m15 12-8.37 8.38a1 1 0 0 1-3-3L12 9"/><path d="m18 15 4-4"/><path d="m21.5 11.5-1.91-1.91A2.83 2.83 0 0 1 18.76 7.6V6.4a1 1 0 0 0-.29-.7l-2.4-2.4a6 6 0 0 0-4.24-1.76H9l.92.82A6.18 6.18 0 0 1 12 6.4v1.36l2 2h1.18a2.83 2.83 0 0 1 2.01.83L19 12.4"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></symbol>
+</svg>
+
+<div class="app">
+  <header>
+    <div class="logo"><svg class="i"><use href="#i-cpu"/></svg></div>
+    <span class="title">AnyPS5 Relinker</span>
+    <span class="sep"></span>
+    <span id="hdrBadge" class="badge badge-muted"><span class="d"></span>Checking…</span>
+    <button class="btn btn-primary upd hidden" id="hdrUpd"></button>
+    <span class="spacer"></span>
+    <button class="btn btn-ghost btn-icon btn-sm" id="themeBtn" title="Toggle theme"><svg class="i"><use href="#i-moon"/></svg></button>
+    <button class="btn btn-outline btn-sm" id="settingsBtn"><svg class="i"><use href="#i-settings"/></svg>Settings</button>
+  </header>
+
+  <main>
+    <!-- ───────────── left: configuration ───────────── -->
+    <div class="left"><div class="left-inner">
+
+      <section class="card">
+        <div class="card-h"><div class="card-t">Source</div><div class="card-d">The executable to port and the modules it ships with.</div></div>
+        <div class="card-c">
+          <div class="field">
+            <div class="label">Executable</div>
+            <div id="elfZone"></div>
+          </div>
+          <div class="field">
+            <div class="list-h">
+              <div class="label">Bundled modules <span id="modBadge"></span></div>
+              <div class="list-actions">
+                <button class="btn btn-ghost btn-sm" id="addModFolder"><svg class="i"><use href="#i-folder"/></svg>Folder</button>
+                <button class="btn btn-ghost btn-sm" id="addModFiles"><svg class="i"><use href="#i-plus"/></svg>Files</button>
+                <button class="btn btn-ghost btn-sm btn-icon hidden" id="clearMods" title="Remove all"><svg class="i"><use href="#i-trash"/></svg></button>
+              </div>
+            </div>
+            <div id="modZone"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><div class="card-t">Target</div><div class="card-d">Platform and relinker options.</div></div>
+        <div class="card-c">
+          <div class="tabs" role="tablist">
+            <button class="tab" role="tab" data-target="windows" aria-selected="true"><svg class="i"><use href="#i-win"/></svg>Windows</button>
+            <button class="tab" role="tab" data-target="linux" aria-selected="false"><svg class="i"><use href="#i-linux"/></svg>Linux</button>
+          </div>
+          <div class="opts">
+            <div class="opt"><div class="opt-text"><div class="label">Convert for Intel CPUs<code>--to-intel</code></div><div class="hint">Rewrites AMD-only instructions. Turn on if this PC has an Intel processor.</div></div><button class="switch" role="switch" data-opt="to_intel" aria-checked="false"></button></div>
+            <div class="opt win"><div class="opt-text"><div class="label">Hide console window<code>--windows-gui</code></div><div class="hint">Use the Windows GUI subsystem.</div></div><button class="switch" role="switch" data-opt="windows_gui" aria-checked="false"></button></div>
+            <div class="opt win"><div class="opt-text"><div class="label">Startup diagnostics<code>--windows-diagnostics</code></div><div class="hint">Report missing dependencies at launch.</div></div><button class="switch" role="switch" data-opt="windows_diagnostics" aria-checked="false"></button></div>
+            <div class="opt"><div class="opt-text"><div class="label">Write registry file<code>--registry</code></div><div class="hint">Saves a .registry.json beside the executable.</div></div><button class="switch" role="switch" data-opt="registry" aria-checked="false"></button></div>
+            <div class="opt"><div class="opt-text"><div class="label">Unused import filter<code>unused-filter</code></div><div class="hint">Strip imports the program never uses.</div></div>
+              <select class="select" id="unused_filter"><option value="0">Off — keep all</option><option value="1">Standard</option><option value="2">Strict (compacts PLT)</option></select></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><div class="card-t">Output</div><div class="card-d">Where the ported build is written.</div></div>
+        <div class="card-c">
+          <div class="field">
+            <div class="label">Folder</div>
+            <div class="input-group">
+              <input class="input mono" id="out_dir" placeholder="Choose an executable first" spellcheck="false">
+              <button class="btn btn-outline" id="pickOut">Browse</button>
+            </div>
+          </div>
+          <button class="coll-btn" id="advBtn" aria-expanded="false"><svg class="i"><use href="#i-chev"/></svg>Advanced</button>
+          <div class="coll" id="adv">
+            <div class="grid2">
+              <div class="field"><div class="label">Executable name</div><input class="input mono" id="output_name" value="app" spellcheck="false"></div>
+              <div class="field" style="margin-top:0"><div class="label">Module folder name</div>
+                <select class="select" id="module_dir"><option value="sce_module">sce_module</option><option value="sce_modules">sce_modules</option></select></div>
+            </div>
+            <div class="field"><div class="label">Library search path<code style="font:11.5px var(--mono);color:hsl(var(--muted-foreground))">--rpath</code></div>
+              <input class="input mono" id="rpath" value="$ORIGIN/libs" spellcheck="false"><div class="hint">$ORIGIN is the executable's folder.</div></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="actions">
+        <div class="cmd selectable" id="cmd"></div>
+        <button class="btn btn-primary btn-lg" id="convertBtn"><svg class="i"><use href="#i-play"/></svg>Convert</button>
+      </div>
+    </div></div>
+
+    <!-- ───────────── right: output ───────────── -->
+    <div class="right">
+      <div id="result" class="hidden"></div>
+      <section class="card console-card">
+        <div class="console-head">
+          <svg class="i" style="color:hsl(var(--muted-foreground))"><use href="#i-terminal"/></svg>
+          <span class="label">Console</span>
+          <span id="runBadge" class="badge badge-muted">Idle</span>
+          <span class="elapsed" id="elapsed"></span>
+          <button class="btn btn-ghost btn-icon btn-sm" id="copyLog" title="Copy log"><svg class="i"><use href="#i-copy"/></svg></button>
+        </div>
+        <div class="progress" id="progress"></div>
+        <pre class="console selectable" id="console"><div class="empty"><div class="dz-ic"><svg class="i"><use href="#i-terminal"/></svg></div>Relinker output will appear here.</div></pre>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- settings -->
+<dialog id="settings">
+  <button class="btn btn-ghost btn-icon btn-sm dlg-x" id="sClose"><svg class="i"><use href="#i-x"/></svg></button>
+  <div class="dlg-h"><div class="dlg-t">Settings</div><div class="card-d">Choose which AnyPS5 build does the conversion.</div></div>
+  <div class="dlg-c">
+    <div class="tabs" role="tablist" id="modeTabs">
+      <button class="tab" role="tab" data-mode="auto" aria-selected="true">Official release</button>
+      <button class="tab" role="tab" data-mode="latest" aria-selected="false">Latest build</button>
+      <button class="tab" role="tab" data-mode="custom" aria-selected="false">My own build</button>
+    </div>
+
+    <div id="autoPane" style="margin-top:16px">
+      <div class="engine">
+        <div class="file-ic"><svg class="i"><use href="#i-package"/></svg></div>
+        <div class="file-main">
+          <div class="file-name" id="engName">AnyPS5</div>
+          <div class="hint" id="engSub"></div>
+        </div>
+        <span id="engBadge"></span>
+      </div>
+      <div class="eng-prog hidden" id="engProg"><div class="bar"><i id="engBar"></i></div><div class="hint" id="engStep"></div></div>
+      <div class="eng-actions">
+        <button class="btn btn-outline btn-sm" id="engCheck"><svg class="i"><use href="#i-refresh"/></svg>Check for updates</button>
+        <button class="btn btn-primary btn-sm hidden" id="engInstall"><svg class="i"><use href="#i-download"/></svg><span id="engInstallTxt">Update</span></button>
+        <span class="spacer"></span>
+        <button class="btn btn-ghost btn-sm" id="engNotes">Release notes</button>
+      </div>
+      <div class="opt" style="padding:12px 0 0;border:0">
+        <div class="opt-text"><div class="label">Check for updates on launch</div><div class="hint">Looks up the newest release on GitHub when the app starts.</div></div>
+        <button class="switch" role="switch" id="sAuto" aria-checked="true"></button>
+      </div>
+    </div>
+
+    <div id="latestPane" class="hidden" style="margin-top:16px">
+      <div class="engine">
+        <div class="file-ic"><svg class="i"><use href="#i-hammer"/></svg></div>
+        <div class="file-main">
+          <div class="file-name" id="devName">Latest AnyPS5</div>
+          <div class="hint" id="devSub"></div>
+        </div>
+        <span id="devBadge"></span>
+      </div>
+      <div class="hint" style="margin-top:12px;line-height:1.55">
+        Builds AnyPS5's newest code on this PC, with the newest libraries and fixes. The first build downloads
+        about 300&nbsp;MB of tools, needs roughly 5&nbsp;GB of disk, and takes around 20–40 minutes. Rebuilding
+        later only recompiles what changed. Output for Linux games isn't available in this mode on Windows.
+      </div>
+      <div class="eng-actions">
+        <button class="btn btn-primary btn-sm" id="devBuild"><svg class="i"><use href="#i-hammer"/></svg><span id="devBuildTxt">Build latest</span></button>
+      </div>
+    </div>
+
+    <div id="customPane" class="hidden" style="margin-top:16px">
+      <div class="field">
+        <div class="label">relinker binary <span id="sRelB"></span></div>
+        <div class="input-group"><input class="input mono" id="sRel" placeholder="…\build\core\relinker\relinker.exe" spellcheck="false"><button class="btn btn-outline" data-browse="sRel" data-kind="file">Browse</button></div>
+        <div class="hint">Built from source by following AnyPS5's docs/dev/BUILD.md.</div>
+      </div>
+      <div class="field">
+        <div class="label">Windows system libraries <span id="sWinB"></span></div>
+        <div class="input-group"><input class="input mono" id="sWin" placeholder="…\build\core\libs\libs" spellcheck="false"><button class="btn btn-outline" data-browse="sWin" data-kind="folder">Browse</button></div>
+      </div>
+      <div class="field">
+        <div class="label">Linux system libraries <span id="sLinB"></span></div>
+        <div class="input-group"><input class="input mono" id="sLin" placeholder="…/build/core/libs/libs" spellcheck="false"><button class="btn btn-outline" data-browse="sLin" data-kind="folder">Browse</button></div>
+      </div>
+    </div>
+
+    <div class="field" style="margin-top:20px;padding-top:16px;border-top:1px solid hsl(var(--border))">
+      <div class="label">Conversion timeout</div>
+      <div class="input-group" style="align-items:center"><input class="input mono" id="sTo" type="number" min="30" style="width:120px"><span class="hint">seconds</span></div>
+    </div>
+  </div>
+  <div class="dlg-f"><button class="btn btn-outline" id="sCancel">Cancel</button><button class="btn btn-primary" id="sSave">Save changes</button></div>
+</dialog>
+
+<div id="toasts"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const ic = (n, s='') => `<svg class="i" ${s}><use href="#i-${n}"/></svg>`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = n => n >= 1048576 ? (n/1048576).toFixed(1)+' MB' : n >= 1024 ? Math.round(n/1024)+' KB' : n+' B';
+let api = null;
+
+const S = {
+  elf:null, mods:[], modsAuto:null, target:'windows',
+  opts:{to_intel:false, windows_gui:false, windows_diagnostics:false, registry:false},
+  outTouched:false, ready:false, running:false, logN:0, timer:null, t0:0,
+  hoverZone:null, settings:null, status:null,
+};
+
+/* ── theme ── */
+function applyTheme(t){
+  const dark = t==='dark' || (t==='system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  $('themeBtn').innerHTML = ic(dark ? 'sun' : 'moon');
+}
+$('themeBtn').onclick = async () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  if (api) applyState(await api.save_settings({theme:next}), true);
+};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(S.settings?.theme || 'system'));
+
+/* ── toast ── */
+function toast(title, desc='', err=false){
+  const t = document.createElement('div'); t.className = 'toast'+(err?' err':'');
+  t.innerHTML = ic(err?'alert':'check', err?'':'style="color:hsl(var(--success))"') + `<div><b>${esc(title)}</b>${desc?`<span>${esc(desc)}</span>`:''}</div>`;
+  $('toasts').appendChild(t); setTimeout(()=>t.remove(), 4200);
+}
+
+/* ── source rendering ── */
+function renderElf(){
+  const z = $('elfZone');
+  if (!S.elf){
+    z.innerHTML = `<div class="dz" data-zone="elf">
+      <div class="dz-ic">${ic('upload')}</div>
+      <div><div class="dz-t">Drop an executable here</div><div class="hint">Clean, decrypted ELF — e.g. eboot.bin</div></div>
+      <button class="btn btn-outline btn-sm" id="pickElf">Browse files</button></div>`;
+    $('pickElf').onclick = pickElf;
+  } else {
+    const e = S.elf;
+    z.innerHTML = `<div class="file" data-zone="elf">
+      <div class="file-ic">${ic('file')}</div>
+      <div class="file-main"><div class="file-name">${esc(e.name)}</div><div class="file-path" title="${esc(e.path)}">&lrm;${esc(e.path)}</div></div>
+      ${e.elf ? '<span class="badge badge-ok"><span class="d"></span>ELF</span>' : '<span class="badge badge-bad"><span class="d"></span>Not ELF</span>'}
+      <span class="hint" style="font-variant-numeric:tabular-nums">${fmt(e.size)}</span>
+      <button class="btn btn-ghost btn-icon btn-sm" id="chgElf" title="Change">${ic('folder-open')}</button>
+      <button class="btn btn-ghost btn-icon btn-sm" id="rmElf" title="Remove">${ic('x')}</button></div>`;
+    $('chgElf').onclick = pickElf;
+    $('rmElf').onclick = () => { S.elf=null; if(S.modsAuto){S.mods=[];S.modsAuto=null;} render(); };
+  }
+}
+function renderMods(){
+  const z = $('modZone');
+  $('clearMods').classList.toggle('hidden', !S.mods.length);
+  $('modBadge').innerHTML = S.modsAuto ? `<span class="badge badge-muted">Found in ${esc(S.modsAuto.endsWith('/') ? S.modsAuto : S.modsAuto + '/')}</span>`
+    : S.mods.length ? `<span class="badge badge-muted">${S.mods.length}</span>` : '';
+  if (!S.mods.length){
+    z.innerHTML = `<div class="dz" data-zone="mods" style="padding:16px;flex-direction:row;justify-content:center;gap:10px">
+      ${ic('package','style="color:hsl(var(--muted-foreground))"')}<span class="hint">Drop the contents of <b style="font-family:var(--mono);font-weight:500">sce_module/</b> here — detected automatically when it sits beside the executable.</span></div>`;
+    return;
+  }
+  z.innerHTML = `<div class="list" data-zone="mods">${S.mods.map((m,i)=>`
+    <div class="li">${ic('package','style="color:hsl(var(--muted-foreground))"')}<span class="n" title="${esc(m.path)}">${esc(m.name)}</span>
+      ${m.elf?'':'<span class="badge badge-warn">not ELF</span>'}<span class="s">${fmt(m.size)}</span>
+      <button class="btn btn-ghost btn-icon btn-sm" data-rm="${i}" title="Remove">${ic('x')}</button></div>`).join('')}</div>`;
+  z.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { S.mods.splice(+b.dataset.rm,1); if(!S.mods.length)S.modsAuto=null; render(); });
+}
+function addMods(list, autoDir){
+  const have = new Set(S.mods.map(m=>m.path));
+  const dupName = new Set(S.mods.map(m=>m.name));
+  let skipped = 0;
+  list.forEach(m => { if(have.has(m.path)) return; if(dupName.has(m.name)){skipped++;return;} S.mods.push(m); dupName.add(m.name); });
+  if (autoDir !== undefined) S.modsAuto = autoDir; else if (list.length) S.modsAuto = null;
+  if (skipped) toast(`${skipped} module(s) skipped`, 'A module with the same file name is already in the list.', true);
+}
+async function setElf(info){
+  if (!info) return;
+  S.elf = info;
+  if (!info.elf) toast('Not an ELF file', 'AnyPS5 needs a clean, decrypted executable.', true);
+  if (info.modules_conflict) toast('Two module folders found', 'Both sce_module/ and sce_modules/ exist beside the executable. Add the right one manually.', true);
+  if (info.modules && !S.mods.length){
+    addMods(info.modules.files, info.modules.label || info.modules.dir_name);
+    $('module_dir').value = info.modules.dir_name;
+  }
+  if (!S.outTouched || !$('out_dir').value) $('out_dir').value = info.suggested_out;
+  render();
+}
+async function pickElf(){ setElf(await api.pick_executable()); }
+$('addModFiles').onclick = async () => { addMods(await api.pick_modules() || []); render(); };
+$('addModFolder').onclick = async () => {
+  const r = await api.pick_module_folder(); if(!r) return;
+  addMods(r.files, null);
+  if (['sce_module','sce_modules'].includes(r.dir_name)) $('module_dir').value = r.dir_name;
+  render();
+};
+$('clearMods').onclick = () => { S.mods=[]; S.modsAuto=null; render(); };
+
+/* ── drag & drop (native paths come from Python via onNativeDrop) ── */
+document.addEventListener('dragover', e => {
+  e.preventDefault();
+  const z = e.target.closest?.('[data-zone]');
+  S.hoverZone = z ? z.dataset.zone : null;
+  document.querySelectorAll('.dz').forEach(d => d.classList.toggle('over', d === z || (z && d.dataset.zone===z.dataset.zone)));
+});
+document.addEventListener('dragleave', e => { if(!e.relatedTarget) document.querySelectorAll('.dz').forEach(d=>d.classList.remove('over')); });
+document.addEventListener('drop', e => { e.preventDefault(); document.querySelectorAll('.dz').forEach(d=>d.classList.remove('over')); });
+window.onNativeDrop = async paths => {
+  if (!paths.length){ toast('Couldn’t read dropped files', 'Use the Browse buttons instead.', true); return; }
+  const zone = S.hoverZone; S.hoverZone = null;
+  const files = await api.inspect_paths(paths);
+  if (!files.length) return;
+  if (zone === 'mods' || (zone !== 'elf' && S.elf)){
+    addMods(files);
+    const dir = files.find(f=>f.from_dir)?.from_dir;
+    if (['sce_module','sce_modules'].includes(dir)) $('module_dir').value = dir;
+    render();
+  } else {
+    const first = files.find(f => !f.from_dir) || files[0];
+    const rest = files.filter(f => f !== first);
+    await setElf(await api.describe_executable(first.path));
+    if (rest.length){ addMods(rest); render(); }
+  }
+};
+
+/* ── target + options ── */
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  S.target = t.dataset.target;
+  document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', x===t));
+  render();
+});
+document.querySelectorAll('.switch[data-opt]').forEach(sw => sw.onclick = () => {
+  S.opts[sw.dataset.opt] = !S.opts[sw.dataset.opt]; render();
+});
+$('advBtn').onclick = () => { const o = $('adv').classList.toggle('open'); $('advBtn').setAttribute('aria-expanded', o); };
+$('out_dir').addEventListener('input', () => S.outTouched = true);
+$('pickOut').onclick = async () => { const p = await api.pick_folder(); if(p){ $('out_dir').value=p; S.outTouched=true; render(); } };
+['unused_filter','output_name','module_dir','rpath','out_dir'].forEach(id => $(id).addEventListener('input', render));
+
+function collect(){
+  return {
+    elf: S.elf?.path || '', modules: S.mods.map(m=>m.path), target: S.target, ...S.opts,
+    unused_filter: $('unused_filter').value, output_name: $('output_name').value.trim() || 'app',
+    module_dir: $('module_dir').value, rpath: $('rpath').value.trim(), out_dir: $('out_dir').value.trim(),
+  };
+}
+function cmdHtml(){
+  const o = collect(), a = ['<b>relinker</b>'];
+  if (o.target==='windows'){ a.push('--windows'); if(o.windows_gui)a.push('--windows-gui'); if(o.windows_diagnostics)a.push('--windows-diagnostics'); }
+  if (o.to_intel) a.push('--to-intel');
+  if (o.unused_filter!=='0') a.push('unused-filter='+o.unused_filter);
+  if (o.registry) a.push('--registry');
+  if (o.rpath && o.rpath!=='$ORIGIN/libs') a.push(`--rpath '${esc(o.rpath)}'`);
+  a.push(`<b>${esc(S.elf?.name || '<input.elf>')}</b>`);
+  a.push(`<b>${esc((o.output_name.replace(/\.(exe|elf)$/i,'')||'app') + (o.target==='windows'?'.exe':'.elf'))}</b>`);
+  return a.join(' ');
+}
+
+function render(){
+  renderElf(); renderMods();
+  document.querySelectorAll('.switch[data-opt]').forEach(sw => {
+    sw.setAttribute('aria-checked', S.opts[sw.dataset.opt]);
+    const winOnly = sw.closest('.opt').classList.contains('win');
+    sw.disabled = winOnly && S.target!=='windows';
+    sw.closest('.opt').classList.toggle('dis', sw.disabled);
+  });
+  $('cmd').innerHTML = cmdHtml() + `<button class="btn btn-ghost btn-icon btn-sm" id="copyCmd" title="Copy command">${ic('copy')}</button>`;
+  $('copyCmd').onclick = () => copy($('cmd').innerText.trim(), 'Command copied');
+  const b = $('convertBtn');
+  if (S.running){ b.className='btn btn-destructive btn-lg'; b.innerHTML = ic('stop')+(S.jobKind==='build'?'Cancel build':'Cancel'); b.disabled=false; }
+  else if (!S.ready){
+    const dl = S.engine?.progress?.state === 'downloading';
+    b.className='btn btn-primary btn-lg'; b.disabled = dl;
+    b.innerHTML = dl ? ic('download')+`Downloading AnyPS5… ${S.engine.progress.pct||0}%`
+      : S.status?.mode==='auto' ? ic('download')+'Download AnyPS5 to continue'
+      : S.status?.mode==='latest' ? ic('hammer')+'Build latest AnyPS5 to continue' : ic('settings')+'Set up your build in Settings';
+  }
+  else { b.className='btn btn-primary btn-lg'; b.innerHTML = ic('play')+`Convert for ${S.target==='windows'?'Windows':'Linux'}`; b.disabled = !S.elf; }
+}
+
+/* ── run ── */
+$('convertBtn').onclick = async () => {
+  if (S.running){ await api.cancel(); return; }
+  if (!S.ready){
+    if (S.status?.mode==='auto') startInstall();
+    else if (S.status?.mode==='latest') startBuild();
+    else openSettings();
+    return;
+  }
+  const r = await api.convert(collect());
+  if (r.error){ toast('Can’t start conversion', r.error, true); return; }
+  beginJob('convert');
+};
+function beginJob(kind){
+  S.running = true; S.jobKind = kind; S.logN = 0; S.t0 = Date.now();
+  $('console').innerHTML = ''; $('result').classList.add('hidden');
+  setRun('running'); render(); tick();
+}
+async function startBuild(){
+  const r = await api.start_build();
+  if (r.error){ toast('Can’t start the build', r.error, true); return; }
+  if ($('settings').open) $('settings').close();
+  beginJob('build');
+  toast('Building the latest AnyPS5', 'Progress is shown in the console. You can keep the app open in the background.');
+}
+$('devBuild').onclick = startBuild;
+async function tick(){
+  const j = await api.poll(S.logN);
+  S.logN = j.log_total;
+  const c = $('console'), atBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 40;
+  c.insertAdjacentHTML('beforeend', j.log.map(l => {
+    const cls = l.startsWith('$ ') ? 'c' : l.startsWith('› ') ? 'm' : /\b(error|fatal|failed|fail|exception|unsupported)\b/i.test(l) ? 'e' : 'o';
+    return `<span class="${cls}">${esc(l)}</span>\n`;
+  }).join(''));
+  if (atBottom) c.scrollTop = c.scrollHeight;
+  const secs = (Date.now()-S.t0)/1000;
+  $('elapsed').textContent = secs < 60 ? secs.toFixed(1)+'s' : `${Math.floor(secs/60)}:${String(Math.floor(secs%60)).padStart(2,'0')}`;
+  if (j.kind === 'build' && j.status === 'running'){
+    const p = j.progress || {};
+    $('runBadge').innerHTML = `<span class="d"></span>${esc(p.step || 'Building')} · ${p.pct||0}%`;
+    $('hdrBadge').className = 'badge badge-warn';
+    $('hdrBadge').innerHTML = `<span class="d"></span>Building AnyPS5… ${p.pct||0}%`;
+  }
+  if (j.status === 'running'){ S.timer = setTimeout(tick, j.kind === 'build' ? 500 : 250); return; }
+  S.running = false; setRun(j.status); showResult(j);
+  if (j.kind === 'build'){
+    applyState(await api.get_state(), true);
+    if (j.status === 'done') toast('Latest AnyPS5 is ready', `main @ ${j.info.commit} — conversions now use this build.`);
+  }
+  render();
+}
+function setRun(st){
+  const map = {running:['badge-warn','Running'], done:['badge-ok','Succeeded'], failed:['badge-bad','Failed'], cancelled:['badge-muted','Cancelled'], idle:['badge-muted','Idle']};
+  const [cls, txt] = map[st] || map.idle;
+  $('runBadge').className = 'badge '+cls; $('runBadge').innerHTML = (st==='running'?'<span class="d"></span>':'')+txt;
+  $('progress').classList.toggle('on', st==='running');
+}
+function showResult(j){
+  const r = $('result');
+  if (j.kind === 'build'){
+    if (j.status === 'done'){
+      const i = j.info;
+      r.innerHTML = `<div class="alert ok">${ic('check')}<div class="alert-t">Latest AnyPS5 built</div>
+        <div class="alert-d">main @ <b style="font-family:var(--mono);font-weight:500">${esc(i.commit)}</b> (${esc(i.date.slice(0,10))}) with ${i.libs} system libraries, built in ${i.minutes < 1 ? 'under a minute' : i.minutes + ' min'}. New conversions use it automatically.</div></div>`;
+      r.classList.remove('hidden');
+    } else if (j.status === 'failed'){
+      r.innerHTML = `<div class="alert bad">${ic('alert')}<div class="alert-t">Build failed</div>
+        <div class="alert-d">${esc(j.error || '')} The console has the details; copy it if you need help. Your previous AnyPS5 is unchanged.</div></div>`;
+      r.classList.remove('hidden');
+    } else r.classList.add('hidden');
+    return;
+  }
+  if (j.status === 'done'){
+    const exe = j.output, libsNote = j.libs_count ? `${j.libs_count} system libraries bundled.` : 'No system libraries bundled — copy the built *.prx files into libs/.';
+    r.innerHTML = `<div class="alert ok">${ic('check')}<div class="alert-t">Port ready</div>
+      <div class="alert-d">${j.file_count} file(s) written. ${libsNote} Copy the game's resources into <b style="font-family:var(--mono);font-weight:500">app0/</b>, then run <b style="font-family:var(--mono);font-weight:500">${esc(exe)}</b>.</div>
+      <div class="alert-a"><button class="btn btn-primary btn-sm" id="openOut">${ic('folder-open')}Open folder</button>
+      <button class="btn btn-outline btn-sm" id="copyOut">${ic('copy')}Copy path</button></div></div>`;
+    $('openOut').onclick = () => api.open_folder(j.out_dir);
+    $('copyOut').onclick = () => copy(j.out_dir, 'Path copied');
+    r.classList.remove('hidden');
+  } else if (j.status === 'failed'){
+    r.innerHTML = `<div class="alert bad">${ic('alert')}<div class="alert-t">${esc(j.error || 'Conversion failed')}</div>
+      <div class="alert-d">See the console for relinker's error message.</div></div>`;
+    r.classList.remove('hidden');
+  } else r.classList.add('hidden');
+}
+async function copy(text, msg){ try{ await navigator.clipboard.writeText(text); toast(msg); }catch{ toast('Copy failed','',true); } }
+$('copyLog').onclick = () => copy($('console').innerText, 'Log copied');
+
+/* ── settings + engine ── */
+let draftMode = 'auto', draftAuto = true, engPoll = null;
+function sBadge(ok, extra=''){ return `<span class="badge ${ok?'badge-ok':'badge-bad'}"><span class="d"></span>${ok?'Found':'Not found'}${extra}</span>`; }
+function applyState(st, silent){
+  S.settings = st.settings; S.status = st.status; S.engine = st.engine; S.ready = st.status.relinker_ok;
+  applyTheme(st.settings.theme || 'system');
+  const e = st.engine, prog = e.progress || {}, downloading = prog.state === 'downloading';
+  const hb = $('hdrBadge');
+  if (downloading){ hb.className='badge badge-warn'; hb.innerHTML = `<span class="d"></span>Updating AnyPS5… ${prog.pct||0}%`; }
+  else if (S.ready){ hb.className='badge badge-ok'; hb.innerHTML = `<span class="d"></span>${esc(st.status.label)}`; }
+  else { hb.className='badge badge-warn'; hb.innerHTML = `<span class="d"></span>${{custom:'Custom build not found', latest:'Latest build not built yet'}[st.status.mode] || 'AnyPS5 not installed'}`; }
+  if (st.job?.kind === 'build' && st.job?.status === 'running'){ hb.className='badge badge-warn'; hb.innerHTML = `<span class="d"></span>Building AnyPS5… ${st.job.progress?.pct||0}%`; }
+  const showUpd = st.status.mode==='auto' && e.update_available && !downloading;
+  $('hdrUpd').classList.toggle('hidden', !showUpd);
+  if (showUpd) $('hdrUpd').innerHTML = `${ic('download')}Update to ${esc(e.latest.tag)}`;
+  fillEngine(); fillDev(st);
+  if (!silent) fillSettings();
+  render();
+  if (downloading && !engPoll) engPoll = setInterval(pollEngine, 400);
+}
+let engBusy = false;
+async function pollEngine(){
+  if (engBusy || !engPoll) return;
+  engBusy = true;
+  const st = await api.engine_info().finally(() => engBusy = false);
+  const p = st.engine.progress || {};
+  if (p.state !== 'downloading'){
+    if (!engPoll) return;
+    clearInterval(engPoll); engPoll = null;
+    if (p.state === 'done') toast(`AnyPS5 ${p.tag} installed`, 'New conversions use this version.');
+    if (p.state === 'error') toast('Update failed', p.error || '', true);
+  }
+  applyState(st, true);
+}
+function fillEngine(){
+  const e = S.engine; if (!e) return;
+  const a = e.active, p = e.progress || {}, downloading = p.state === 'downloading';
+  $('engName').textContent = a ? `AnyPS5 ${a.tag}` : 'AnyPS5 not installed';
+  let sub = a ? (a.source === 'bundled' ? 'Included with this app' : 'Downloaded from GitHub') : 'Download the official release to start converting.';
+  if (e.checking) sub += ' · checking for updates…';
+  else if (e.check_error) sub += ' · ' + e.check_error;
+  else if (e.latest && !e.update_available && a) sub += ' · up to date';
+  $('engSub').textContent = sub;
+  $('engBadge').innerHTML = !a ? '<span class="badge badge-warn"><span class="d"></span>Missing</span>'
+    : e.update_available ? `<span class="badge badge-warn"><span class="d"></span>${esc(e.latest.tag)} available</span>`
+    : '<span class="badge badge-ok"><span class="d"></span>Ready</span>';
+  const canInstall = !downloading && (e.update_available || (!a && e.latest));
+  $('engInstall').classList.toggle('hidden', !canInstall);
+  $('engInstallTxt').textContent = a ? `Update to ${e.latest?.tag||''}` : `Download ${e.latest?.tag||''}`;
+  $('engCheck').disabled = downloading || e.checking;
+  $('engProg').classList.toggle('hidden', !downloading);
+  if (downloading){ $('engBar').style.width = (p.pct||0)+'%'; $('engStep').textContent = `${p.step||'Working'}… ${p.pct||0}%`; }
+}
+function fillDev(st){
+  const d = st.dev, building = st.job?.kind === 'build' && st.job?.status === 'running';
+  $('devName').textContent = d ? `AnyPS5 main @ ${d.commit}` : 'Latest AnyPS5';
+  $('devSub').textContent = d ? `Code from ${d.date.slice(0,10)} · built ${d.built_at} · ${d.libs} libraries${d.patches?.length ? ` · ${d.patches.length} app fix${d.patches.length>1?'es':''} applied` : ''}` : 'Not built on this PC yet.';
+  $('devBadge').innerHTML = building ? '<span class="badge badge-warn"><span class="d"></span>Building…</span>'
+    : d ? '<span class="badge badge-ok"><span class="d"></span>Ready</span>' : '<span class="badge badge-muted">Not built</span>';
+  $('devBuildTxt').textContent = building ? 'Building…' : d ? 'Update & rebuild' : 'Build latest';
+  $('devBuild').disabled = building || (S.running && S.jobKind !== 'build');
+}
+function setDraftMode(m){
+  draftMode = m;
+  document.querySelectorAll('#modeTabs .tab').forEach(t => t.setAttribute('aria-selected', t.dataset.mode===m));
+  $('autoPane').classList.toggle('hidden', m!=='auto');
+  $('latestPane').classList.toggle('hidden', m!=='latest');
+  $('customPane').classList.toggle('hidden', m!=='custom');
+}
+document.querySelectorAll('#modeTabs .tab').forEach(t => t.onclick = () => setDraftMode(t.dataset.mode));
+$('sAuto').onclick = () => { draftAuto = !draftAuto; $('sAuto').setAttribute('aria-checked', draftAuto); };
+function fillSettings(){
+  const s = S.settings, c = S.status.custom;
+  setDraftMode(['custom','latest'].includes(s.engine_mode) ? s.engine_mode : 'auto');
+  draftAuto = s.auto_update_check !== false; $('sAuto').setAttribute('aria-checked', draftAuto);
+  $('sRel').value = s.relinker; $('sWin').value = s.libs_windows; $('sLin').value = s.libs_linux; $('sTo').value = s.timeout;
+  $('sRelB').innerHTML = s.relinker ? sBadge(c.relinker_ok) : '';
+  $('sWinB').innerHTML = c.libs_windows.set ? sBadge(c.libs_windows.ok, c.libs_windows.ok ? ` · ${c.libs_windows.count} .prx` : '') : '';
+  $('sLinB').innerHTML = c.libs_linux.set ? sBadge(c.libs_linux.ok, c.libs_linux.ok ? ` · ${c.libs_linux.count} .prx` : '') : '';
+}
+function openSettings(){ fillSettings(); $('settings').showModal(); }
+async function startInstall(){
+  const r = await api.install_update();
+  if (r.error){ toast('Can’t update', r.error, true); return; }
+  applyState(await api.engine_info(), true);
+}
+$('settingsBtn').onclick = openSettings;
+$('hdrUpd').onclick = startInstall;
+$('engInstall').onclick = startInstall;
+$('engNotes').onclick = () => api.open_release_page();
+$('engCheck').onclick = async () => {
+  $('engCheck').disabled = true; $('engSub').textContent = 'Checking GitHub…';
+  const st = await api.check_updates(); applyState(st, true);
+  const e = st.engine;
+  if (e.check_error) toast('Update check failed', e.check_error, true);
+  else if (!e.update_available) toast('You’re up to date', `AnyPS5 ${e.active?.tag || e.latest.tag} is the latest release.`);
+};
+$('sClose').onclick = $('sCancel').onclick = () => $('settings').close();
+document.querySelectorAll('[data-browse]').forEach(b => b.onclick = async () => {
+  const p = b.dataset.kind === 'file' ? await api.pick_relinker() : await api.pick_folder();
+  if (p) $(b.dataset.browse).value = p;
+});
+$('sSave').onclick = async () => {
+  const st = await api.save_settings({engine_mode:draftMode, auto_update_check:draftAuto, relinker:$('sRel').value,
+    libs_windows:$('sWin').value, libs_linux:$('sLin').value, timeout:$('sTo').value});
+  applyState(st);
+  if (st.status.relinker_ok){ $('settings').close(); toast('Settings saved', st.status.label); }
+  else if (draftMode === 'custom') toast('relinker not found', 'Check the path to your relinker binary.', true);
+  else { $('settings').close(); toast('Settings saved', 'Download the AnyPS5 engine to start converting.'); }
+};
+
+/* ── boot ── */
+async function boot(){
+  api = window.pywebview.api;
+  const st = await api.get_state();
+  applyState(st);
+  if (!st.dnd) document.querySelectorAll('.dz .hint').forEach(h => h.textContent = 'Drag & drop needs a newer pywebview — use Browse.');
+  if (!st.status.relinker_ok) openSettings();
+  // the launch-time update check runs in the background; pick up its result
+  let n = 0; const t = setInterval(async () => {
+    const s2 = await api.engine_info(); applyState(s2, true);
+    if (!s2.engine.checking || ++n > 40) clearInterval(t);
+  }, 500);
+}
+applyTheme('system'); render();
+if (window.pywebview?.api) boot(); else window.addEventListener('pywebviewready', boot);
+</script>
+</body>
+</html>

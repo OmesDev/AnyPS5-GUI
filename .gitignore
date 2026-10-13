@@ -1,0 +1,19 @@
+# Converted games and their data (multi-GB, and not yours to redistribute)
+games/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# PyInstaller output
+build/
+dist/
+*.spec
+
+# Logs and caches left by running converted games
+run.log
+run*.log
+shader_cache/
+devlog/

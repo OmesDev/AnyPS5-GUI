@@ -1,0 +1,59 @@
+# Emulates DB_RENDER_CONTROL STENCIL_CLEAR_ENABLE draws (found missing while porting Unpacking):
+#   such a draw writes DB_STENCIL_CLEAR to every covered sample regardless of the depth/stencil tests
+#   and leaves depth untouched, which maps to an always-passing Vulkan stencil REPLACE with depth writes off.
+#   Depth clears, copies, resummarize and decompress stay rejected. Includes a test in tests/Graphics.cpp.
+
+diff --git a/core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp b/core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp
+index dc0ab6f..94cbf15 100644
+--- a/core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp
++++ b/core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp
+@@ -193,7 +193,9 @@ VkStencilOpState stencilFace(std::uint32_t compare, std::uint32_t ops, std::uint
+ }
+ 
+ void decodeDepth(const Registers& cx, std::uint32_t depthControl, State& result) {
+-    zero(cx, 0x000, 0x00001f9fu, "depth/stencil clear, copy, resummarize or decompress draws (DB_RENDER_CONTROL)");
++    // STENCIL_CLEAR_ENABLE (bit 1) is emulated below; depth clears, copies, resummarize and decompress are not.
++    zero(cx, 0x000, 0x00001f9du, "depth clear, copy, resummarize or decompress draws (DB_RENDER_CONTROL)");
++    const bool stencilClear = (read(cx, 0x000) & 0x2u) != 0;
+     const auto view = read(cx, 0x002);
+     zero(cx, 0x002, 0x3c000000u, "depth mips (DB_DEPTH_VIEW MIP_LEVEL)");
+     zero(cx, 0x010, 0x000f100cu, "multisampled, partially resident or mipmapped depth (DB_Z_INFO)");
+@@ -239,6 +241,22 @@ void decodeDepth(const Registers& cx, std::uint32_t depthControl, State& result)
+         result.stencilFront = stencilFace((depthControl >> 8u) & 7u, ops, read(cx, 0x10c), stencilReadOnly);
+         result.stencilBack = (depthControl & 0x80u) != 0 ? stencilFace((depthControl >> 20u) & 7u, ops >> 12u, read(cx, 0x10d), stencilReadOnly) : result.stencilFront;
+     }
++    if (stencilClear && stencil && !stencilReadOnly) {
++        // A stencil clear draw stores DB_STENCIL_CLEAR into every covered sample whatever the depth and
++        // stencil tests say, and leaves depth untouched: an always-passing stencil replace of the clear value.
++        VkStencilOpState clear{};
++        clear.failOp = VK_STENCIL_OP_REPLACE;
++        clear.passOp = VK_STENCIL_OP_REPLACE;
++        clear.depthFailOp = VK_STENCIL_OP_REPLACE;
++        clear.compareOp = VK_COMPARE_OP_ALWAYS;
++        clear.compareMask = 0xffu;
++        clear.writeMask = 0xffu;
++        clear.reference = depth.clearStencil;
++        result.stencilTest = true;
++        result.stencilFront = clear;
++        result.stencilBack = clear;
++        result.depthWrite = false;
++    }
+ }
+ 
+ void decodeDepthBias(const Registers& cx, std::uint32_t raster, State& result) {
+diff --git a/core/libs/prx/libSceAgcDriver/tests/Graphics.cpp b/core/libs/prx/libSceAgcDriver/tests/Graphics.cpp
+index f4b0550..6f76bb5 100644
+--- a/core/libs/prx/libSceAgcDriver/tests/Graphics.cpp
++++ b/core/libs/prx/libSceAgcDriver/tests/Graphics.cpp
+@@ -748,6 +748,11 @@ void DepthStencilTests() {
+     queue.context[0x200] = 0x00700711;
+     expectFailure([&] { AgcDriver::Graphics::DecodeState(queue); }, "stencil add/subtract");
+     queue.context[0x10b] = 0;
++    queue.context[0x000] = 2;
++    state = AgcDriver::Graphics::DecodeState(queue);
++    const auto& cleared = state.stencilFront;
++    Require(state.stencilTest && !state.depthWrite && cleared.compareOp == VK_COMPARE_OP_ALWAYS && cleared.passOp == VK_STENCIL_OP_REPLACE && cleared.failOp == VK_STENCIL_OP_REPLACE && cleared.depthFailOp == VK_STENCIL_OP_REPLACE && cleared.reference == 7 && cleared.writeMask == 0xff, "a stencil clear draw must write DB_STENCIL_CLEAR to every covered sample");
++    Require(std::memcmp(&state.stencilBack, &cleared, sizeof(cleared)) == 0, "a stencil clear draw must clear back faces too");
+     queue.context[0x000] = 1;
+     expectFailure([&] { AgcDriver::Graphics::DecodeState(queue); }, "DB_RENDER_CONTROL");
+     queue = makeState();

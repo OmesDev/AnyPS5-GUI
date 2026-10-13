@@ -1,0 +1,6 @@
+The engine/ folder contains unmodified official release binaries of AnyPS5
+(relinker and patched system libraries), (c) the AnyPS5 contributors,
+licensed under the GNU General Public License version 2.
+
+Source code: https://github.com/boykopovar/AnyPS5 (tag matching the folder name)
+Releases:    https://github.com/boykopovar/AnyPS5/releases

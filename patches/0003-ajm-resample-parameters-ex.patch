@@ -1,0 +1,33 @@
+# Implements sceAjmBatchJobSetResampleParametersEx (found missing while porting Unpacking) by forwarding to the
+#   existing sceAjmBatchJobSetResampleParameters with the start ratio; per-sample ratio ramps are held at the
+#   start ratio (exact when the ramp is 0) and reported once on stderr.
+
+diff --git a/core/libs/prx/libSceAjm.native/Export.cpp b/core/libs/prx/libSceAjm.native/Export.cpp
+index 8f5edd6..2013d1b 100644
+--- a/core/libs/prx/libSceAjm.native/Export.cpp
++++ b/core/libs/prx/libSceAjm.native/Export.cpp
+@@ -38,15 +38,16 @@ int APS5_VABI sceAjmBatchJobEncode(AjmBatchInfo* info, uint32_t instance, const
+  return 0;
+ }
+ 
++int APS5_VABI sceAjmBatchJobSetResampleParameters(AjmBatchInfo* info, uint32_t instance, float ratio, uint32_t flags, void* result);
++
++// The Ex variant adds a per-sample ratio ramp. The resampler only holds a fixed ratio, so the ramp is
++// approximated by its starting ratio (exact when ratio_change_per_sample is 0) and reported once.
+ int APS5_VABI sceAjmBatchJobSetResampleParametersEx(AjmBatchInfo* info, uint32_t instance, float ratio_start, float ratio_change_per_sample, uint32_t flags, void* result) {
+- (void)info;
+- (void)instance;
+- (void)ratio_start;
+- (void)ratio_change_per_sample;
+- (void)flags;
+- (void)result;
+- AjmStub(__func__);
+- return 0;
++ static std::atomic<bool> reportedRamp{false};
++ if (ratio_change_per_sample != 0.0f && !reportedRamp.exchange(true)) {
++  std::fprintf(stderr, "[ajm] sceAjmBatchJobSetResampleParametersEx: ratio ramps (%g per sample) are held at the start ratio\n", static_cast<double>(ratio_change_per_sample));
++ }
++ return sceAjmBatchJobSetResampleParameters(info, instance, ratio_start, flags, result);
+ }
+ 
+ const char* APS5_VABI sceAjmStrError(int error) {

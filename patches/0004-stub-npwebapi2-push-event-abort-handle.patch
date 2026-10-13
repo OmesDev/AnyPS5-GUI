@@ -1,0 +1,17 @@
+# Adds sceNpWebApi2PushEventAbortHandle (found missing while porting DOOM + DOOM II): PSN push events; returns success like the neighbouring stubs.
+
+diff --git a/core/libs/prx/libSceNpWebApi2/Export.cpp b/core/libs/prx/libSceNpWebApi2/Export.cpp
+index 2c3e02d..d2260ce 100644
+--- a/core/libs/prx/libSceNpWebApi2/Export.cpp
++++ b/core/libs/prx/libSceNpWebApi2/Export.cpp
+@@ -158,4 +158,10 @@ int APS5_VABI sceNpWebApi2SetRequestTimeout() {
+     return 0;
+ }
+
++int APS5_VABI sceNpWebApi2PushEventAbortHandle(int lib_ctx_id, int handle_id) {
++    (void)lib_ctx_id;
++    (void)handle_id;
++    return 0;
++}
++
+ }

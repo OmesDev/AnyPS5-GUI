@@ -674,8 +674,11 @@ function showResult(j){
   }
   if (j.status === 'done'){
     const exe = j.output, libsNote = j.libs_count ? `${j.libs_count} system libraries bundled.` : 'No system libraries bundled — copy the built *.prx files into libs/.';
+    const dataNote = j.game_data
+      ? `Game data copied from <b style="font-family:var(--mono);font-weight:500">${esc(j.game_data.source)}</b> into app0/. Run`
+      : `Copy the game's resources into <b style="font-family:var(--mono);font-weight:500">app0/</b>, then run`;
     r.innerHTML = `<div class="alert ok">${ic('check')}<div class="alert-t">Port ready</div>
-      <div class="alert-d">${j.file_count} file(s) written. ${libsNote} Copy the game's resources into <b style="font-family:var(--mono);font-weight:500">app0/</b>, then run <b style="font-family:var(--mono);font-weight:500">${esc(exe)}</b>.</div>
+      <div class="alert-d">${j.file_count} file(s) written. ${libsNote} ${dataNote} <b style="font-family:var(--mono);font-weight:500">${esc(exe)}</b>.</div>
       <div class="alert-a"><button class="btn btn-primary btn-sm" id="openOut">${ic('folder-open')}Open folder</button>
       <button class="btn btn-outline btn-sm" id="copyOut">${ic('copy')}Copy path</button></div></div>`;
     $('openOut').onclick = () => api.open_folder(j.out_dir);

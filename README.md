@@ -30,14 +30,11 @@ libs/
 app0/
 ```
 
-## Important: copy the game's files into `app0`
+## The game's files in `app0`
 
-The app only converts the game's **code**. You have to copy the game's **data** into the `app0` folder yourself:
+After converting, the app copies the game's **data** into `app0` for you, including `sce_sys/` and, for Unity games, `Media/`. It finds the dump by looking for `sce_sys/param.json` in the folder with the `eboot.bin`, then up to two folders above it. That covers a decrypted `eboot.bin` kept in a subfolder of the dump, such as `D:\decrypted\eboot.bin` with the game at `D:\`. Files already in `app0` are never overwritten, so converting again only copies what's missing.
 
-- `sce_sys/` (needed by almost every game)
-- `Media/` (for Unity games)
-
-Copy them from your game dump, but **don't overwrite** the `.guest.prx` files already in `app0`.
+If it can't find the dump, the console says so. Then copy the data from your dump into `app0` yourself, without overwriting the `.guest.prx` files already there.
 
 Then run the game from PowerShell so you can see any errors:
 
@@ -51,7 +48,7 @@ cd path\to\your\output
 | Problem | Fix |
 |---|---|
 | **"Not ELF"** shown on the file | The file is encrypted. You need the decrypted version. This app can't decrypt files. |
-| **`param.json not found`** when launching | Copy `sce_sys/` from the game dump into `app0`. |
+| **`param.json not found`** when launching | The game dump wasn't found next to `eboot.bin`. Copy `sce_sys/` from the dump into `app0`. |
 | Other "file not found" errors when launching | Copy the rest of the game's data into `app0`. |
 | **"Duplicate guest export"** when converting | Two modules clash. Remove one of the two files named in the message. |
 | Game crashes after starting | Usually something AnyPS5 doesn't support yet. See [Compatibility](#compatibility). |

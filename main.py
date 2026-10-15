@@ -65,6 +65,9 @@ DEFAULTS = {
 ELF_TYPES = ("Executables (*.elf;*.bin;*.self)", "All files (*.*)")
 MODULE_TYPES = ("Modules (*.prx;*.sprx;*.elf)", "All files (*.*)")
 EXIT_MEANING = {0: "Conversion succeeded", 1: "Invalid arguments", 2: "Conversion failed"}
+# Folders in a game dump that aren't game data: homebrew stub libraries, and the system
+# folders found at the root of a drive the dump was extracted to.
+NOT_GAME_DATA = {"fakelib", "$recycle.bin", "system volume information"}
 
 
 def _dialog(kind: str) -> int:
@@ -99,6 +102,15 @@ def _is_elf(p: Path) -> bool:
             return f.read(4) == b"\x7fELF"
     except OSError:
         return False
+
+
+def _find_game_root(elf: Path) -> Path | None:
+    """The dump folder holding sce_sys/param.json: the executable's own folder, or a folder
+    above it when the decrypted executable sits apart from the data (e.g. D:\\decrypted)."""
+    for d in [elf.parent, *elf.parent.parents][:3]:
+        if (d / "sce_sys" / "param.json").is_file():
+            return d
+    return None
 
 
 def _file_info(p: Path) -> dict:
@@ -513,6 +525,11 @@ class Api:
                     self._log("› Cancelled")
                     self._finish()
                     return
+            game_data = self._copy_game_data(elf, out_dir)
+            if self._job.get("status") == "cancelled":
+                self._log("› Cancelled")
+                self._finish()
+                return
             if target == "linux" and out_file.exists():
                 try:
                     out_file.chmod(out_file.stat().st_mode | 0o111)
@@ -522,7 +539,7 @@ class Api:
 
             files = sorted(p.relative_to(out_dir).as_posix() for p in out_dir.rglob("*") if p.is_file())
             self._finish(status="done", exit_code=0, files=files[:300], file_count=len(files),
-                         libs_count=libs_count)
+                         libs_count=libs_count, game_data=game_data)
         except FileNotFoundError as e:
             self._finish(status="failed", error=f"File not found: {e.filename}")
         except Exception as e:  # noqa: BLE001
@@ -606,6 +623,53 @@ class Api:
         if mirrored:
             self._log(f"› Placed {mirrored} converted module(s) at their original paths under app0/ "
                       "(for engines that load them at runtime)")
+
+    def _copy_game_data(self, elf: Path, out_dir: Path) -> dict | None:
+        """relinker only converts code; the game also opens its data under /app0 at startup
+        (sce_sys/param.json, Unity's Media/ ...). Copy the dump in beside the converted modules.
+        Files already in app0/ are never overwritten: the *.guest.prx stay, and converting again
+        doesn't recopy gigabytes. A failure here leaves the finished conversion in place."""
+        elf = elf.resolve()
+        root = _find_game_root(elf)
+        if not root:
+            self._log("› No sce_sys/param.json next to the executable or above it; "
+                      "copy the game's data into app0/ yourself")
+            return None
+        app0 = out_dir.resolve() / "app0"
+        # the decrypted-executable folder (when it's a subfolder of the dump) and the output itself
+        skip = {out_dir.resolve()} | ({elf.parent} if elf.parent != root else set())
+        self._log(f"› Copying game data from {root} into app0/")
+        copied = present = size = 0
+        last = time.time()
+        try:
+            for dirpath, dirnames, filenames in os.walk(root):
+                d = Path(dirpath)
+                dirnames[:] = [n for n in dirnames
+                               if n.lower() not in NOT_GAME_DATA and (d / n).resolve() not in skip]
+                rel = d.relative_to(root)
+                for n in filenames:
+                    if self._job.get("status") == "cancelled":
+                        return None
+                    if not rel.parts and (n.lower() == "eboot.bin" or d / n == elf):
+                        continue  # the game's executable; app.exe replaces it
+                    dst = app0 / rel / n
+                    if dst.exists():
+                        present += 1
+                        continue
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(d / n, dst)
+                    copied += 1
+                    size += dst.stat().st_size
+                    if time.time() - last > 5:
+                        last = time.time()
+                        self._log(f"  … {copied} files, {size / 2**30:.1f} GB")
+        except OSError as e:
+            self._log(f"› Copying game data stopped: {e}. The conversion itself is complete; "
+                      f"copy the rest from {root} into app0/ yourself")
+            return None
+        self._log(f"› Copied {copied} game data file(s) ({size / 2**30:.2f} GB) into app0/"
+                  + (f"; {present} already there were kept" if present else ""))
+        return {"source": str(root), "copied": copied, "bytes": size}
 
     def _link_guest_modules(self, out_dir: Path, system_libs: Path) -> None:
         """Workaround for the v0.1.1 release: it resolves the executable's imports against

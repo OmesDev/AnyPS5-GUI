@@ -1,0 +1,99 @@
+# Unity titles such as Unpacking crashed with 0xc00000fd (stack overflow) inside nvgpucomp64.dll: NVIDIA's shader compiler
+# recurses per nesting level of the SPIR-V and ran out of the 2 MiB stack every Windows thread gets. vkCreateGraphicsPipelines
+# and vkCreateComputePipelines called on a small stack now run on a fresh 64 MiB-stack thread (the size the shader prepare
+# pool already uses) and are waited for.
+diff --git a/core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp b/core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp
+index 4e72b41..13ad6ac 100644
+--- a/core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp
++++ b/core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp
+@@ -35,6 +35,7 @@
+ #include "prx/libc/include/General.hpp"
+ #ifdef _WIN32
+ #include <windows.h>
++#include <pthread.h>
+ #endif
+ #include <atomic>
+ #include <chrono>
+@@ -76,6 +77,72 @@ void require(bool condition, const char* reason) {
+     if (!condition) throw std::runtime_error(std::string("Vulkan presentation: ") + reason);
+ }
+ 
++#ifdef _WIN32
++// NVIDIA's shader compiler (nvgpucomp64.dll) recurses once per nesting level of the SPIR-V it is
++// handed, and the translated shaders of some games nest deep enough to overflow the 2 MiB stack
++// relinker gives every Windows thread (0xc00000fd inside nvgpucomp64 while the game draws).
++// Pipeline creation is rare and costs milliseconds, so a call made on a small stack runs on a
++// fresh thread with a 64 MiB stack, the shader prepare pool's size, and is waited for.
++// Every lookup goes through deviceProc, so wrapping it covers each pipeline creation site.
++namespace LargeStackCompile {
++
++constexpr std::size_t StackSize = 64u << 20u;
++constexpr std::size_t Enough = 16u << 20u;
++
++PFN_vkGetDeviceProcAddr hostDeviceProc = nullptr;
++
++template<typename TCall>
++VkResult Call(TCall call) {
++    // The stack's reservation starts at the allocation base of the region holding a local.
++    MEMORY_BASIC_INFORMATION region{};
++    const auto here = reinterpret_cast<std::uintptr_t>(&region);
++    if (VirtualQuery(&region, &region, sizeof(region)) != 0 && here - reinterpret_cast<std::uintptr_t>(region.AllocationBase) >= Enough)
++        return call();
++    struct Job {
++        TCall* call;
++        VkResult result;
++    } job{&call, VK_ERROR_INITIALIZATION_FAILED};
++    pthread_attr_t attributes;
++    pthread_attr_init(&attributes);
++    pthread_attr_setstacksize(&attributes, StackSize);
++    pthread_t thread;
++    const int created = pthread_create(&thread, &attributes, [](void* opaque) -> void* {
++        auto* job = static_cast<Job*>(opaque);
++        job->result = (*job->call)();
++        return nullptr;
++    }, &job);
++    pthread_attr_destroy(&attributes);
++    if (created != 0) return call();
++    pthread_join(thread, nullptr);
++    return job.result;
++}
++
++VKAPI_ATTR VkResult VKAPI_CALL CreateGraphicsPipelines(VkDevice device, VkPipelineCache cache, std::uint32_t count, const VkGraphicsPipelineCreateInfo* infos, const VkAllocationCallbacks* allocator, VkPipeline* pipelines) {
++    const auto create = reinterpret_cast<PFN_vkCreateGraphicsPipelines>(hostDeviceProc(device, "vkCreateGraphicsPipelines"));
++    return Call([&] { return create(device, cache, count, infos, allocator, pipelines); });
++}
++
++VKAPI_ATTR VkResult VKAPI_CALL CreateComputePipelines(VkDevice device, VkPipelineCache cache, std::uint32_t count, const VkComputePipelineCreateInfo* infos, const VkAllocationCallbacks* allocator, VkPipeline* pipelines) {
++    const auto create = reinterpret_cast<PFN_vkCreateComputePipelines>(hostDeviceProc(device, "vkCreateComputePipelines"));
++    return Call([&] { return create(device, cache, count, infos, allocator, pipelines); });
++}
++
++VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL DeviceProc(VkDevice device, const char* name) {
++    const auto function = hostDeviceProc(device, name);
++    if (function == nullptr) return nullptr;
++    if (std::strcmp(name, "vkCreateGraphicsPipelines") == 0) return reinterpret_cast<PFN_vkVoidFunction>(&CreateGraphicsPipelines);
++    if (std::strcmp(name, "vkCreateComputePipelines") == 0) return reinterpret_cast<PFN_vkVoidFunction>(&CreateComputePipelines);
++    return function;
++}
++
++PFN_vkGetDeviceProcAddr Wrap(PFN_vkGetDeviceProcAddr deviceProc) {
++    hostDeviceProc = deviceProc;
++    return &DeviceProc;
++}
++
++}  // namespace LargeStackCompile
++#endif
++
+ bool CoreVulkanCapability(std::uint32_t capability) {
+     switch (capability) {
+         case spv::CapabilityMatrix:
+@@ -941,6 +1008,9 @@ VulkanDevice::VulkanDevice(const PresentationWindow* window, bool compileOnly) :
+         APS5_LOG_OUT("Vulkan surface created surface=%p window=%p", reinterpret_cast<void*>(state->surface), state->window);
+     }
+     state->deviceProc = state->InstanceFunction<PFN_vkGetDeviceProcAddr>("vkGetDeviceProcAddr");
++#ifdef _WIN32
++    state->deviceProc = LargeStackCompile::Wrap(state->deviceProc);
++#endif
+     const auto enumerate = state->InstanceFunction<PFN_vkEnumeratePhysicalDevices>("vkEnumeratePhysicalDevices");
+     std::uint32_t count = 0;
+     check(enumerate(state->instance, &count, nullptr), "vkEnumeratePhysicalDevices");

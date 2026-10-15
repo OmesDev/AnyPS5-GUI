@@ -3,11 +3,11 @@
 # which is what the hardware does with MSAA off. Experimental: depends on VK_EXT_sample_locations support for the sample count.
 
 diff --git a/core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp b/core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp
-index f151a5f..d8be817 100644
+index d9bd9f9..85ca6cb 100644
 --- a/core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp
 +++ b/core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp
-@@ -731,7 +731,15 @@ State DecodeState(const QueueState& queue, bool vertexWorkgroup) {
-     if (!result.alphaToCoverage) zero(cx, 0x2dc, AlphaToCoverageMask, "dithered or rounded alpha-to-coverage");
+@@ -804,7 +804,15 @@ State DecodeState(const QueueState& queue, bool vertexWorkgroup) {
+     }
      Require(!result.depth || result.depth->samples == result.samples, "the depth target's sample count differs from the rasterizer's");
      zero(cx, 0x292, ScanModeMask & ~1u, "scan conversion mode");
 -    Require(result.samples == 1 || (read(cx, 0x292) & 1u) != 0, "multisampled targets rasterized without MSAA_ENABLE are unsupported");
